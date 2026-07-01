@@ -1,0 +1,23 @@
+# DAH 2026 재현 세팅 (Python 3.11 권장, 3.10도 동작)
+# ------------------------------------------------------------
+# CybORG 드론 스웜 시나리오는 구형 gym(0.23.1)에 묶여 있어
+# 버전을 아래처럼 고정해야 최신 파이썬에서 정상 동작한다.
+# (gym 0.23.1 은 numpy 2.x / distutils 제거된 Python 3.12+ 와 충돌)
+
+numpy==1.23.5
+setuptools<66
+wheel
+gym==0.23.1
+pettingzoo
+prettytable
+docutils
+networkx
+pyyaml
+paramiko
+matplotlib
+pygame
+
+# CybORG 본체는 PyPI에 없으므로 로컬 설치본을 경로로 연결한다.
+# (아래 중 하나를 사용 — README 참고)
+#   pip install -e C:/Users/SAMSUNG/Desktop/CybORG-main/CybORG-main
+#   또는  set PYTHONPATH=C:\Users\SAMSUNG\Desktop\CybORG-main\CybORG-main
