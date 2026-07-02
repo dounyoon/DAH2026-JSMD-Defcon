@@ -7,7 +7,6 @@ main.py 는 이 값들을 읽어 전체 시뮬레이션을 구동한다.
 
 # --- CybORG 설치 경로 ---
 # CybORG 를 이 venv 에 pip 설치하지 않았다면, 여기에 CybORG 폴더 경로를 적는다.
-# (다운로드/압축해제한 폴더. 그 안에 setup.py 와 CybORG 패키지 폴더가 있는 위치)
 # 비워두면("") 이미 설치된 CybORG 를 사용한다.
 CYBORG_PATH = r"C:\Users\SAMSUNG\Desktop\DAH해커톤\CybORG-main\CybORG-main"
 
@@ -15,17 +14,34 @@ CYBORG_PATH = r"C:\Users\SAMSUNG\Desktop\DAH해커톤\CybORG-main\CybORG-main"
 NUM_DRONES = 18       # 드론 스웜 규모 (CC3 기본값 = 18)
 MAX_STEPS = 150       # 한 에피소드당 시뮬레이션 스텝 수
 SEED = 42             # 재현성을 위한 난수 시드
-NUM_EPISODES = 3      # 반복 실행 횟수 (평균 점수 산출용)
+NUM_EPISODES = 10      # 반복 실행 횟수 (평균 점수 산출용)
 
-# --- 대회 채점 가중치 ---
-# 대회 공식: total_score = (attack + defense) * availability
-POINTS_PER_DRONE = 10.0   # 드론 1대당 공격/방어 점수
-SLA_THRESHOLD = 80.0      # 가용성 SLA 임계치(%) - 이 아래로 떨어지면 임무 위험
+# --- 실행 모드 ---
+#   "evaluate" : [대회 기준·기본값] 내 점수를 계산한다. 대회처럼 내 공격은 '상대'에게,
+#                내 방어는 '나'에게 적용해 따로 재고 합친다.
+#                내 대회점수 = (내 공격력 + 내 방어력) × 내 가용성.
+#   ── 아래는 개선 과정을 보여주기 위한 비교용(self-play) 모드 ──
+#   "sample"   : CybORG 내장 (공격=웜, 방어=RandomAgent). 아무 개선도 없는 최초 참조.
+#   "baseline" : 우리 규칙기반 1차 (공격=탐색·장악 위주 + 방어=규칙기반).
+#   "current"  : 지금 개선 (공격=가용성 공격 집중[IEEE 논문 적용] + 방어=규칙기반).
+# ※ baseline·current 는 같은 방어를 써서 '공격 개선'을 비교하는 용도이지, '내 점수'가 아니다.
+MODE = "evaluate"
 
-# --- 에이전트 선택 ---
-# False = 순수 raw CybORG 내장 에이전트로 실행 (공격=RedDroneWorm, 방어=RandomAgent)
-# True  = 우리가 만든 규칙 기반 에이전트로 실행 (attack_agent.py / defense_agent.py)
-USE_CUSTOM_AGENTS = False
+# --- 평가 가중치 (조사한 사이버 공방전 평가 표준 기반) ---
+# 공격력 점수 = 상대에게 입힌 피해 (높을수록 강한 공격)
+ATTACK_WEIGHTS = {
+    "availability_damage": 0.5,   # 상대 정상통신(green)을 얼마나 마비시켰나 (누적)
+    "compromise": 0.3,            # 얼마나 오래·많이 장악했나 (시간 누적)
+    "speed": 0.2,                 # 얼마나 빨리 첫 장악에 성공했나
+}
+# 방어력 점수 = 지켜낸 정도 (높을수록 강한 방어)
+DEFENSE_WEIGHTS = {
+    "availability": 0.5,          # 가용성을 얼마나 유지했나
+    "protection": 0.3,            # 얼마나 오래·많이 드론을 지켰나 (시간 누적)
+    "resilience": 0.2,            # 뺏겨도 되찾는 복원력
+}
+
+SLA_THRESHOLD = 80.0     # 가용성 SLA 임계치(%) - 이 아래로 떨어지면 임무 위험
 
 # --- 출력 설정 ---
 VERBOSE = True            # 스텝별 로그 출력 여부

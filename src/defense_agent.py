@@ -5,9 +5,16 @@
 규칙 기반으로 구현한다. 드론 1대당 방어 에이전트 1개가 분산 배치된다.
 
 핵심 원칙 (가용성 보존):
-  - 위협이 없으면 Sleep 으로 자원을 아낀다. (전체망 차단 금지 원칙)
-  - 침입 세션이 탐지되면 RemoveOtherSessions 로 '그 세션만' 격리한다.
-  - 드론을 뺏겼으면 RetakeControl 로 복구한다.
+  - 내 드론에 침입 세션이 탐지되면 RemoveOtherSessions 로 '그 세션만' 격리한다.
+  - 뺏긴 '다른' 드론을 RetakeControl 로 되찾는다 (아래 [중요] 참고).
+  - 할 일이 없으면 Sleep 으로 자원을 아낀다 (전체망 차단 금지 원칙).
+
+[중요] 복구는 '다른' 드론을 대상으로 한다:
+  드론이 장악되면 그 드론의 방어 에이전트도 함께 제거된다(죽는다). 따라서
+  "내 드론이 뺏기면 내가 복구"는 영원히 실행될 수 없다(죽은 에이전트는 행동 불가).
+  그래서 '살아있는' 에이전트가 뺏긴 다른 드론을 RetakeControl 로 되찾도록 한다.
+  뺏긴 드론을 되찾으면 그 드론에 박힌 red root 가 제거되어 정상 통신이 되살아나
+  가용성이 회복된다.
 
 정수 액션 매핑:
   CybORG PettingZoo 래퍼는 정수 액션을 쓴다. runner 가 넘겨주는
@@ -19,7 +26,10 @@ from CybORG.Shared import Results
 
 
 class ReactiveDefenseAgent(BaseAgent):
-    """반응형 규칙 기반 방어 에이전트."""
+    """반응형 규칙 기반 방어 에이전트 (복구형)."""
+
+    # 로컬 위협이 없을 때, 뺏긴 다른 드론 복구(RetakeControl)를 시도할 확률.
+    RETAKE_PROBABILITY = 0.5
 
     def __init__(self, name, np_random=None):
         super().__init__(name, np_random)
@@ -41,47 +51,37 @@ class ReactiveDefenseAgent(BaseAgent):
                 return True
         return False
 
-    def _detect_lost(self, observation):
-        """내 드론에 내 blue root 세션이 없으면 장악당한 것 -> 복구 대상 IP 반환."""
-        host = observation.get(self._own_drone_key(), {})
-        sessions = host.get("Sessions", [])
-        has_blue = any("blue" in str(s.get("Agent", "")) for s in sessions)
-        if not has_blue and sessions is not None:
-            for iface in host.get("Interface", []):
-                if "IP Address" in iface:
-                    return iface["IP Address"]
-        return None
-
     # --- 정수 액션 인덱스 탐색 ---
-    def _find_index(self, action_name, ip=None):
+    def _find_index(self, action_name):
         for idx, act in self.action_map.items():
-            if type(act).__name__ != action_name:
-                continue
-            if ip is None or getattr(act, "ip_address", None) == ip:
+            if type(act).__name__ == action_name:
                 return idx
         return None
+
+    def _retake_indices(self):
+        """복구(RetakeControl) 가능한 모든 정수 액션 인덱스 목록."""
+        return [idx for idx, act in self.action_map.items()
+                if type(act).__name__ == "RetakeControl"]
 
     def get_action(self, observation, action_space):
         # runner 는 action_space 자리에 정수->Action 매핑을 넘겨준다.
         if isinstance(action_space, dict):
             self.action_map = action_space
 
-        # 1) 복구 최우선: 뺏긴 드론이면 RetakeControl
-        lost_ip = self._detect_lost(observation)
-        if lost_ip is not None:
-            idx = self._find_index("RetakeControl", lost_ip)
-            if idx is None:
-                idx = self._find_index("RetakeControl")
-            if idx is not None:
-                return idx
-
-        # 2) 격리: 침입 세션 탐지되면 RemoveOtherSessions
+        # 1) 격리 최우선: 내 드론에 침입 세션이 보이면 그것만 제거
         if self._detect_intrusion(observation):
             idx = self._find_index("RemoveOtherSessions")
             if idx is not None:
                 return idx
 
-        # 3) 위협 없음: Sleep 으로 자원 절약 (가용성 보존)
+        # 2) 복구: 뺏긴 '다른' 드론을 RetakeControl 로 되찾는다
+        #    (내 드론이 뺏기면 나는 이미 죽어 못 하므로, 살아있는 내가 이웃을 복구)
+        if self.np_random.random() < self.RETAKE_PROBABILITY:
+            retakes = self._retake_indices()
+            if retakes:
+                return self.np_random.choice(retakes)
+
+        # 3) 할 일 없음: Sleep 으로 자원 절약 (가용성 보존)
         idx = self._find_index("Sleep")
         return idx if idx is not None else 0
 
